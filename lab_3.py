@@ -89,11 +89,11 @@ class InverseKinematics(Node):
             ])
 
         # T_0_1 (base_link to leg_front_r_1)
-        T_0_1 = translation(0.07500, -0.0445, 0) @ rotation_x(1.57080) @ rotation_z(theta1)
+        T_0_1 = translation(-0.07500, -0.0445, 0) @ rotation_x(1.57080) @ rotation_z(theta1)
 
         # T_1_2 (leg_front_r_1 to leg_front_r_2)
         ## TODO: Implement the transformation matrix from leg_front_r_1 to leg_front_r_2
-        T_1_2 = translation(0, 0, 0.039) @ rotation_y(-1.57080) @ rotation_z(theta2)
+        T_1_2 = translation(0, 0, -0.039) @ rotation_y(-1.57080) @ rotation_z(theta2)
 
         # T_2_3 (leg_front_r_2 to leg_front_r_3)
         ## TODO: Implement the transformation matrix from leg_front_r_2 to leg_front_r_3
@@ -125,7 +125,7 @@ class InverseKinematics(Node):
             # Compute the gradient of the cost function using finite differences
             cost_plus_ep = cost_function(theta + epsilon)
             cost_minus_ep = cost_function(theta - epsilon)
-            grad = (cost_plus_ep - cost_minus_ep) / (2 * epsilon)
+            grad = ((cost_plus_ep[0] - cost_minus_ep[0]) / (2*epsilon), (cost_plus_ep[1] - cost_minus_ep[1]) / (2*epsilon))
             return grad
 
         theta = np.array(initial_guess)
@@ -141,8 +141,8 @@ class InverseKinematics(Node):
             ################################################################################################
             # TODO: Implement the gradient update
             # TODO (BONUS): Implement the (quasi-)Newton's method for faster convergence
-            theta -= learning_rate * grad
-
+            theta[0] -= learning_rate * grad[0]
+            theta[2] -= learning_rate * grad[1]
 
             ################################################################################################
 
@@ -160,10 +160,9 @@ class InverseKinematics(Node):
         # based on the current time t
         ################################################################################################
         # TODO: Implement the interpolation function
-        xp = [self.ee_triangle_positions[0][0], self.ee_triangle_positions[1][0], self.ee_triangle_positions[2][0]]
-        fp = [self.ee_triangle_positions[0][1], self.ee_triangle_positions[1][1], self.ee_triangle_positions[2][1]] 
+        
         ################################################################################################
-        return np.interp(t, xp, fp)
+        return 
 
     def ik_timer_callback(self):
         if self.joint_positions is not None:
