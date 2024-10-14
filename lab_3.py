@@ -46,12 +46,11 @@ class InverseKinematics(Node):
         self.t = 0
 
     def listener_callback(self, msg):
-        joints_of_interest = ['leg_front_r_1', 'leg_front_r_2', 'leg_front_r_3']
+        joints_of_interest = ['leg_front_l_1', 'leg_front_l_2', 'leg_front_l_3']
         self.joint_positions = np.array([msg.position[msg.name.index(joint)] for joint in joints_of_interest])
         self.joint_velocities = np.array([msg.velocity[msg.name.index(joint)] for joint in joints_of_interest])
-    
-    def forward_kinematics(self, theta1, theta2, theta3):
 
+    def forward_kinematics(self, theta1, theta2, theta3):
         def rotation_x(angle):
             # rotation about the x-axis implemented for you
             return np.array([
@@ -93,7 +92,7 @@ class InverseKinematics(Node):
 
         # T_1_2 (leg_front_r_1 to leg_front_r_2)
         ## TODO: Implement the transformation matrix from leg_front_r_1 to leg_front_r_2
-        T_1_2 = translation(0, 0, -0.039) @ rotation_y(-1.57080) @ rotation_z(theta2)
+        T_1_2 = translation(0, 0, 0.039) @ rotation_y(-1.57080) @ rotation_z(theta2)
 
         # T_2_3 (leg_front_r_2 to leg_front_r_3)
         ## TODO: Implement the transformation matrix from leg_front_r_2 to leg_front_r_3
@@ -106,7 +105,7 @@ class InverseKinematics(Node):
         T_0_ee = T_0_1 @ T_1_2 @ T_2_3 @ T_3_ee
 
         # TODO: Extract the end-effector position. The end effector position is a 3 vector (not in homogenous coordinates)
-        end_effector_position = (T_0_ee @ np.array([0, 0, 0, 1]))[:2]
+        end_effector_position = (T_0_ee @ np.array([0, 0, 0, 1]))[:3]
 
         return end_effector_position
 
@@ -114,24 +113,30 @@ class InverseKinematics(Node):
         def cost_function(theta):
             # Compute the cost function and the L1 norm of the error
             # return the cost and the L1 norm of the error
-            ################################################################################################
-            cost = self.forward_kinematics(theta[0], theta[1], theta[2]) - target_ee
-            errorNorm = np.linalg.norm(cost)
-            cost = (cost ** 2).sum() # sum of the squares of the cost
-            ################################################################################################
+
+            target_current_difference = self.forward_kinematics(theta[0], theta[1], theta[2]) - target_ee
+
+            print(f"Difference: {target_current_difference}, Target: {target_ee}, Current: {self.forward_kinematics(theta[0], theta[1], theta[2])}")
+
+            cost = np.sum(target_current_difference ** 2)
+            errorNorm = np.sum(np.abs(target_current_difference))
+
             return cost, errorNorm
 
         def gradient(theta, epsilon=1e-3):
             # Compute the gradient of the cost function using finite differences
-            cost_plus_ep = cost_function(theta + epsilon)
-            cost_minus_ep = cost_function(theta - epsilon)
-            grad = ((cost_plus_ep[0] - cost_minus_ep[0]) / (2*epsilon), (cost_plus_ep[1] - cost_minus_ep[1]) / (2*epsilon))
+
+            cost_plus = cost_function(theta + epsilon)[0]
+            cost_minus = cost_function(theta - epsilon)[0]
+
+            grad = (cost_plus - cost_minus) / (2 * epsilon)
+            
             return grad
 
         theta = np.array(initial_guess)
-        learning_rate = None # TODO: Set the learning rate
-        max_iterations = None # TODO: Set the maximum number of iterations
-        tolerance = None # TODO: Set the tolerance for the L1 norm of the error
+        learning_rate = 10 # TODO: Set the learning rate
+        max_iterations = 1000 # TODO: Set the maximum number of iterations
+        tolerance = 0.01 # TODO: Set the tolerance for the L1 norm of the error
 
         cost_l = []
         for _ in range(max_iterations):
@@ -141,9 +146,8 @@ class InverseKinematics(Node):
             ################################################################################################
             # TODO: Implement the gradient update
             # TODO (BONUS): Implement the (quasi-)Newton's method for faster convergence
-            theta[0] -= learning_rate * grad[0]
-            theta[2] -= learning_rate * grad[1]
 
+            theta -= learning_rate * grad
             ################################################################################################
 
             cost, l1 = cost_function(theta)
@@ -151,7 +155,7 @@ class InverseKinematics(Node):
             if l1.mean() < tolerance:
                 break
 
-        # print(f'Cost: {cost_l}')
+        print(f' \n COST: {cost} \n ')
 
         return theta
 
@@ -159,14 +163,33 @@ class InverseKinematics(Node):
         # Intepolate between the three triangle positions in the self.ee_triangle_positions
         # based on the current time t
         ################################################################################################
-        # TODO: Implement the interpolation function
-        
-        ################################################################################################
-        return 
+        t_norm = t % 3.0
+
+        vertex_1, vertex_2, vertex_3 = self.ee_triangle_positions
+        interp_times = np.array([0, 1, 2])
+
+        x_interp = np.interp(t_norm, interp_times, self.ee_triangle_positions[:, 0])
+        y_interp = np.interp(t_norm, interp_times, self.ee_triangle_positions[:, 1])
+        z_interp = np.interp(t_norm, interp_times, self.ee_triangle_positions[:, 2])
+
+        target_interp = np.array([x_interp, y_interp, z_interp])
+
+        # print(f"Time {t:.2f}: Position {target_interp}")
+
+        return target_interp
+
+        # vertex_time = np.array([0.0, 1/3, 2/3, 1.0])
+        # x_pos = np.append(self.ee_triangle_positions[:, 0], self.ee_triangle_positions[0, 0])
+        # y_pos = np.append(self.ee_triangle_positions[:, 1], self.ee_triangle_positions[0, 1])
+        # z_pos = np.append(self.ee_triangle_positions[:, 2], self.ee_triangle_positions[0, 2])
+
+        # x_lerp = np.interp(t_norm, key_)
+
 
     def ik_timer_callback(self):
         if self.joint_positions is not None:
             target_ee = self.interpolate_triangle(self.t)
+            # print(target_ee)
             self.target_joint_positions = self.inverse_kinematics(target_ee, self.joint_positions)
             current_ee = self.forward_kinematics(*self.joint_positions)
 
@@ -180,7 +203,7 @@ class InverseKinematics(Node):
 
     def pd_timer_callback(self):
         if self.target_joint_positions is not None:
-        
+
             command_msg = Float64MultiArray()
             command_msg.data = self.target_joint_positions.tolist()
             self.command_publisher.publish(command_msg)
